@@ -55,9 +55,12 @@
 
 #include "chip.h"
 
-#include "lpc43_syscon.h"
-#include "lpc43_pinconn.h"
 #include "lpc43_ssp.h"
+#include "lpc43_cgu.h"
+#include "lpc43_scu.h"
+#include "lpc43_ccu.h"
+#include "lpc43_pinconfig.h"
+
 
 #if defined(CONFIG_LPC43_SSP0) || defined(CONFIG_LPC43_SSP1)
 
@@ -84,25 +87,7 @@
 #  define spivdbg(x...)
 #endif
 
-/* SSP Clocking.
- *
- * The CPU clock by 1, 2, 4, or 8 to get the SSP peripheral clock (SSP_CLOCK).
- * SSP_CLOCK may be further divided by 2-254 to get the SSP clock.  If we
- * want a usable range of 4KHz to 25MHz for the SSP, then:
- *
- * 1. SSPCLK must be greater than (2*25MHz) = 50MHz, and
- * 2. SSPCLK must be less than (254*40Khz) = 101.6MHz.
- *
- * If we assume that CCLK less than or equal to 100MHz, we can just
- * use the CCLK undivided to get the SSP_CLOCK.
- */
 
-#if LPC43_CCLK > 100000000
-#  error "CCLK <= 100,000,000 assumed"
-#endif
-
-#define SSP_PCLKSET_DIV    SYSCON_PCLKSEL_CCLK
-#define SSP_CLOCK          LPC43_CCLK
 
 /****************************************************************************
  * Private Types
@@ -114,6 +99,7 @@ struct lpc43_sspdev_s
 {
   struct spi_dev_s spidev;     /* Externally visible part of the SPI interface */
   uint32_t         sspbase;    /* SPIn base address */
+  uint32_t         sspbasefreq;
 #ifdef CONFIG_LPC43_SSP_INTERRUPTS
   uint8_t          sspirq;     /* SPI IRQ number */
 #endif
@@ -189,6 +175,7 @@ static struct lpc43_sspdev_s g_ssp0dev =
 {
   .spidev            = { &g_spi0ops },
   .sspbase           = LPC43_SSP0_BASE,
+  .sspbasefreq       = BOARD_SSP0_BASEFREQ
 #ifdef CONFIG_LPC43_SSP_INTERRUPTS
   .sspirq            = LPC43_IRQ_SSP0,
 #endif
@@ -223,6 +210,7 @@ static struct lpc43_sspdev_s g_ssp1dev =
 {
   .spidev            = { &g_spi1ops },
   .sspbase           = LPC43_SSP1_BASE,
+  .sspbasefreq       = BOARD_SSP1_BASEFREQ
 #ifdef CONFIG_LPC43_SSP_INTERRUPTS
   .sspirq            = LPC43_IRQ_SSP1,
 #endif
@@ -271,7 +259,7 @@ static inline uint32_t ssp_getreg(FAR struct lpc43_sspdev_s *priv, uint8_t offse
  * Returned Value:
  *   None
  *
- ***************************************************************************/
+ ****************************************************************************/
 
 static inline void ssp_putreg(FAR struct lpc43_sspdev_s *priv, uint8_t offset, uint32_t value)
 {
@@ -321,6 +309,7 @@ static int ssp_lock(FAR struct spi_dev_s *dev, bool lock)
     {
       (void)sem_post(&priv->exclsem);
     }
+
   return OK;
 }
 #endif
@@ -346,9 +335,6 @@ static uint32_t ssp_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency)
   uint32_t divisor;
   uint32_t actual;
 
-  /* Check if the requested frequence is the same as the frequency selection */
-
-  DEBUGASSERT(priv && frequency <= SSP_CLOCK / 2);
 #ifndef CONFIG_SPI_OWNBUS
   if (priv->frequency == frequency)
     {
@@ -360,9 +346,9 @@ static uint32_t ssp_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency)
 
   /* frequency = SSP_CLOCK / divisor, or divisor = SSP_CLOCK / frequency */
 
-  divisor = SSP_CLOCK / frequency;
+  divisor = priv->sspbasefreq / frequency;
 
-   /* "In master mode, CPSDVSRmin = 2 or larger (even numbers only)" */
+  /* "In master mode, CPSDVSRmin = 2 or larger (even numbers only)" */
 
   if (divisor < 2)
     {
@@ -381,7 +367,7 @@ static uint32_t ssp_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency)
 
   /* Calculate the new actual */
 
-  actual = SSP_CLOCK / divisor;
+  actual = priv->sspbasefreq / divisor;
 
   /* Save the frequency setting */
 
@@ -423,7 +409,7 @@ static void ssp_setmode(FAR struct spi_dev_s *dev, enum spi_mode_e mode)
       /* Yes... Set CR0 appropriately */
 
       regval = ssp_getreg(priv, LPC43_SSP_CR0_OFFSET);
-      regval &= ~(SSP_CR0_CPOL|SSP_CR0_CPHA);
+      regval &= ~(SSP_CR0_CPOL | SSP_CR0_CPHA);
 
       switch (mode)
         {
@@ -439,7 +425,7 @@ static void ssp_setmode(FAR struct spi_dev_s *dev, enum spi_mode_e mode)
           break;
 
         case SPIDEV_MODE3: /* CPOL=1; CPHA=1 */
-          regval |= (SSP_CR0_CPOL|SSP_CR0_CPHA);
+          regval |= (SSP_CR0_CPOL | SSP_CR0_CPHA);
           break;
 
         default:
@@ -540,7 +526,7 @@ static uint16_t ssp_send(FAR struct spi_dev_s *dev, uint16_t wd)
   return (uint16_t)regval;
 }
 
-/*************************************************************************
+/****************************************************************************
  * Name: ssp_sndblock
  *
  * Description:
@@ -720,32 +706,34 @@ static inline FAR struct lpc43_sspdev_s *lpc43_ssp0initialize(void)
   irqstate_t flags;
   uint32_t regval;
 
-  /* Configure multiplexed pins as connected on the board.  Chip select
-   * pins must be configured by board-specific logic.  All SSP0 pins and
-   * one SSP1 pin (SCK) have multiple, alternative pin selection.
-   * Definitions in the board.h file must be provided to resolve the
-   * board-specific pin configuration like:
-   *
-   * #define GPIO_SSP0_SCK GPIO_SSP0_SCK_1
-   */
-
   flags = irqsave();
-  lpc43_configgpio(GPIO_SSP0_SCK);
-  lpc43_configgpio(GPIO_SSP0_MISO);
-  lpc43_configgpio(GPIO_SSP0_MOSI);
 
   /* Configure clocking */
 
-  regval  = getreg32(LPC43_SYSCON_PCLKSEL1);
-  regval &= ~SYSCON_PCLKSEL1_SSP0_MASK;
-  regval |= (SSP_PCLKSET_DIV << SYSCON_PCLKSEL1_SSP0_SHIFT);
-  putreg32(regval, LPC43_SYSCON_PCLKSEL1);
+  regval  = getreg32(LPC43_BASE_SSP0_CLK);
+  regval &= ~BASE_SSP0_CLK_CLKSEL_MASK;
+  regval |= (BOARD_SSP0_CLKSRC | BASE_SSP0_CLK_AUTOBLOCK);
+  putreg32(regval, LPC43_BASE_SSP0_CLK);
 
-  /* Enable peripheral clocking to SSP0 */
+  /* Clock register */
 
-  regval  = getreg32(LPC43_SYSCON_PCONP);
-  regval |= SYSCON_PCONP_PCSSP0;
-  putreg32(regval, LPC43_SYSCON_PCONP);
+  regval  = getreg32(LPC43_CCU1_M4_SSP0_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU1_M4_SSP0_CFG);
+
+  /* Clock peripheral */
+
+  regval  = getreg32(LPC43_CCU2_APB0_SSP0_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU2_APB0_SSP0_CFG);
+
+  /* Pin configuration */
+
+  lpc43_pin_config(PINCONF_SSP0_SCK);
+  lpc43_pin_config(PINCONF_SSP0_SSEL);
+  lpc43_pin_config(PINCONF_SSP0_MISO);
+  lpc43_pin_config(PINCONF_SSP0_MOSI);
+
   irqrestore(flags);
 
   return &g_ssp0dev;
@@ -772,32 +760,34 @@ static inline FAR struct lpc43_sspdev_s *lpc43_ssp1initialize(void)
   irqstate_t flags;
   uint32_t regval;
 
-  /* Configure multiplexed pins as connected on the board.  Chip select
-   * pins must be configured by board-specific logic.  All SSP0 pins and
-   * one SSP1 pin (SCK) have multiple, alternative pin selection.
-   * Definitions in the board.h file must be provided to resolve the
-   * board-specific pin configuration like:
-   *
-   * #define GPIO_SSP0_SCK GPIO_SSP0_SCK_1
-   */
-
   flags = irqsave();
-  lpc43_configgpio(GPIO_SSP1_SCK);
-  lpc43_configgpio(GPIO_SSP1_MISO);
-  lpc43_configgpio(GPIO_SSP1_MOSI);
 
   /* Configure clocking */
 
-  regval  = getreg32(LPC43_SYSCON_PCLKSEL0);
-  regval &= ~SYSCON_PCLKSEL0_SSP1_MASK;
-  regval |= (SSP_PCLKSET_DIV << SYSCON_PCLKSEL0_SSP1_SHIFT);
-  putreg32(regval, LPC43_SYSCON_PCLKSEL0);
+  regval  = getreg32(LPC43_BASE_SSP1_CLK);
+  regval &= ~BASE_SSP1_CLK_CLKSEL_MASK;
+  regval |= (BOARD_SSP1_CLKSRC | BASE_SSP1_CLK_AUTOBLOCK);
+  putreg32(regval, LPC43_BASE_SSP1_CLK);
 
-  /* Enable peripheral clocking to SSP0 and SSP1 */
+  /* Clock register */
 
-  regval  = getreg32(LPC43_SYSCON_PCONP);
-  regval |= SYSCON_PCONP_PCSSP1;
-  putreg32(regval, LPC43_SYSCON_PCONP);
+  regval  = getreg32(LPC43_CCU1_M4_SSP1_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU1_M4_SSP1_CFG);
+
+  /* Clock peripheral */
+
+  regval  = getreg32(LPC43_CCU2_APB2_SSP1_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU2_APB2_SSP1_CFG);
+
+  /* Pins configuration */
+
+  lpc43_pin_config(PINCONF_SSP1_SCK);
+  lpc43_pin_config(PINCONF_SSP1_SSEL);
+  lpc43_pin_config(PINCONF_SSP1_MISO);
+  lpc43_pin_config(PINCONF_SSP1_MOSI);
+
   irqrestore(flags);
 
   return &g_ssp1dev;
@@ -837,18 +827,20 @@ FAR struct spi_dev_s *lpc43_sspinitialize(int port)
       priv = lpc43_ssp0initialize();
       break;
 #endif
+
 #ifdef CONFIG_LPC43_SSP1
     case 1:
       priv = lpc43_ssp1initialize();
       break;
 #endif
+
     default:
       return NULL;
     }
 
   /* Configure 8-bit SPI mode */
 
-  ssp_putreg(priv, LPC43_SSP_CR0_OFFSET, SSP_CR0_DSS_8BIT|SSP_CR0_FRF_SPI);
+  ssp_putreg(priv, LPC43_SSP_CR0_OFFSET, SSP_CR0_DSS_8BIT | SSP_CR0_FRF_SPI);
 
   /* Disable the SSP and all interrupts (we'll poll for all data) */
 
@@ -927,4 +919,3 @@ void ssp_flush(FAR struct spi_dev_s *dev)
 }
 
 #endif /* CONFIG_LPC43_SSP0/1 */
-

@@ -61,6 +61,9 @@ config ARCH_CHIP_LPC4357FBD208
 config ARCH_CHIP_LPC4357FET256
 	bool "LPC4357FET256"
 
+config ARCH_CHIP_LPC4370FET100
+	bool "LPC4370FET100"
+
 endchoice
 
 config ARCH_FAMILY_LPC4310
@@ -91,6 +94,11 @@ config ARCH_FAMILY_LPC4353
 config ARCH_FAMILY_LPC4357
 	bool
 	default y if ARCH_CHIP_LPC4357FET180 || ARCH_CHIP_LPC4357FBD208 || ARCH_CHIP_LPC4357FET256
+	select ARCH_HAVE_TICKLESS
+
+config ARCH_FAMILY_LPC4370
+	bool
+	default y if ARCH_CHIP_LPC4370FET100
 	select ARCH_HAVE_TICKLESS
 
 choice
@@ -320,6 +328,11 @@ config LPC43_I2C0
 	bool "I2C0"
 	default n
 
+config LPC43_I2C0_SUPERFAST
+	bool "I2C0 super fast mode"
+	default n
+	depends on LPC43_I2C0
+
 config LPC43_I2C1
 	bool "I2C1"
 	default n
@@ -420,6 +433,48 @@ config LPC43_USART3
 	default n
 	select ARCH_HAVE_USART3
 	select ARCH_HAVE_SERIAL_TERMIOS
+
+config LPC43_USBOTG
+	bool "USB EHCI"
+	default n
+	select USBHOST_HAVE_ASYNCH
+
+if LPC43_USBOTG && USBHOST
+
+menu "USB host controller driver (HCD) options"
+
+config LPC43_EHCI_NQHS
+	int "Number of Queue Head (QH) structures"
+	default 4
+	---help---
+		Configurable number of Queue Head (QH) structures.  The default is
+		one per Root hub port plus one for EP0 (4).
+
+config LPC43_EHCI_NQTDS
+	int "Number of Queue Element Transfer Descriptor (qTDs)"
+	default 6
+	---help---
+		Configurable number of Queue Element Transfer Descriptor (qTDs).
+		The default is one per root hub plus three from EP0 (6).
+
+config LPC43_EHCI_BUFSIZE
+	int "Size of one request/descriptor buffer"
+	default 128
+	---help---
+		The size of one request/descriptor buffer in bytes.  The TD buffe
+		size must be an even number of 32-bit words and must be large enough
+		to hangle the largest transfer via a SETUP request.
+
+config LPC43_EHCI_PREALLOCATE
+	bool "Preallocate descriptor pool"
+	default y
+	---help---
+		Select this option to pre-allocate EHCI queue and descriptor
+		structure pools in .bss.  Otherwise, these pools will be
+		dynamically allocated using kmm_memalign().
+
+endmenu # USB host controller driver (HCD) options
+endif # LPC43_USBOTG && USBHOST
 
 config LPC43_USB0
 	bool "USB0"

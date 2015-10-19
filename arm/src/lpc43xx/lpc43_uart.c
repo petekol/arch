@@ -1,4 +1,4 @@
-/**************************************************************************
+/****************************************************************************
  * arch/arm/src/lpc43xx/lpc43_uart.c
  *
  *   Copyright (C) 2012 Gregory Nutt. All rights reserved.
@@ -31,11 +31,11 @@
  * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- **************************************************************************/
+ ****************************************************************************/
 
-/**************************************************************************
+/****************************************************************************
  * Included Files
- **************************************************************************/
+ ****************************************************************************/
 
 #include <nuttx/config.h>
 
@@ -52,12 +52,13 @@
 #include "lpc43_pinconfig.h"
 #include "lpc43_rgu.h"
 #include "lpc43_cgu.h"
+#include "lpc43_ccu.h"
 
 #include "lpc43_uart.h"
 
-/**************************************************************************
+/****************************************************************************
  * Pre-processor Definitions
- **************************************************************************/
+ ****************************************************************************/
 
 /* Select UART parameters for the selected console */
 
@@ -138,37 +139,37 @@
 #define CONSOLE_FCR_VALUE (UART_FCR_RXTRIGGER_8 | UART_FCR_TXRST |\
                            UART_FCR_RXRST | UART_FCR_FIFOEN)
 
-/**************************************************************************
+/****************************************************************************
  * Private Types
- **************************************************************************/
+ ****************************************************************************/
 
-/**************************************************************************
+/****************************************************************************
  * Private Function Prototypes
- **************************************************************************/
+ ****************************************************************************/
 
-/**************************************************************************
- * Global Variables
- **************************************************************************/
+/****************************************************************************
+ * Public Data
+ ****************************************************************************/
 
-/**************************************************************************
+/****************************************************************************
  * Private Variables
- **************************************************************************/
+ ****************************************************************************/
 
-/**************************************************************************
+/****************************************************************************
  * Private Functions
- **************************************************************************/
+ ****************************************************************************/
 
-/**************************************************************************
+/****************************************************************************
  * Public Functions
- **************************************************************************/
+ ****************************************************************************/
 
-/**************************************************************************
+/****************************************************************************
  * Name: up_lowputc
  *
  * Description:
  *   Output one byte on the serial console
  *
- **************************************************************************/
+ ****************************************************************************/
 
 void up_lowputc(char ch)
 {
@@ -183,7 +184,7 @@ void up_lowputc(char ch)
 #endif
 }
 
-/**************************************************************************
+/****************************************************************************
  * Name: lpc43_lowsetup
  *
  * Description:
@@ -206,7 +207,7 @@ void up_lowputc(char ch)
  *   5. DMA: UART transmit and receive functions can operate with the
  *      GPDMA controller.
  *
- **************************************************************************/
+ ****************************************************************************/
 
 void lpc43_lowsetup(void)
 {
@@ -231,15 +232,17 @@ void lpc43_lowsetup(void)
 
   /* Clear fifos */
 
-  putreg32(UART_FCR_RXRST|UART_FCR_TXRST, CONSOLE_BASE+LPC43_UART_FCR_OFFSET);
+  putreg32(UART_FCR_RXRST | UART_FCR_TXRST,
+           CONSOLE_BASE + LPC43_UART_FCR_OFFSET);
 
   /* Set trigger */
 
-  putreg32(UART_FCR_FIFOEN|UART_FCR_RXTRIGGER_8, CONSOLE_BASE+LPC43_UART_FCR_OFFSET);
+  putreg32(UART_FCR_FIFOEN | UART_FCR_RXTRIGGER_8,
+           CONSOLE_BASE + LPC43_UART_FCR_OFFSET);
 
   /* Set up the LCR */
 
-  putreg32(CONSOLE_LCR_VALUE, CONSOLE_BASE+LPC43_UART_LCR_OFFSET);
+  putreg32(CONSOLE_LCR_VALUE, CONSOLE_BASE + LPC43_UART_LCR_OFFSET);
 
   /* Set the BAUD divisor */
 
@@ -247,8 +250,8 @@ void lpc43_lowsetup(void)
 
   /* Configure the FIFOs */
 
-  putreg32(UART_FCR_RXTRIGGER_8|UART_FCR_TXRST|UART_FCR_RXRST|UART_FCR_FIFOEN,
-           CONSOLE_BASE+LPC43_UART_FCR_OFFSET);
+  putreg32(UART_FCR_RXTRIGGER_8 | UART_FCR_TXRST | UART_FCR_RXRST |
+           UART_FCR_FIFOEN, CONSOLE_BASE + LPC43_UART_FCR_OFFSET);
 #endif
 #endif /* HAVE_UART */
 }
@@ -333,6 +336,18 @@ void lpc43_usart0_setup(void)
   regval |= (BOARD_USART0_CLKSRC | BASE_USART0_CLK_AUTOBLOCK);
   putreg32(regval, LPC43_BASE_USART0_CLK);
 
+  /* Clock register */
+
+  regval  = getreg32(LPC43_CCU1_M4_USART0_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU1_M4_USART0_CFG);
+
+  /* Clock peripheral */
+
+  regval  = getreg32(LPC43_CCU2_APB0_USART0_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU2_APB0_USART0_CFG);
+
   /* Configure I/O pins.  NOTE that multiple pin configuration options must
    * be disambiguated by defining the pin configuration in the board.h
    * header file.
@@ -369,6 +384,18 @@ void lpc43_uart1_setup(void)
   regval &= ~BASE_UART1_CLK_CLKSEL_MASK;
   regval |= (BOARD_UART1_CLKSRC | BASE_UART1_CLK_AUTOBLOCK);
   putreg32(regval, LPC43_BASE_UART1_CLK);
+
+  /* Clock register */
+
+  regval  = getreg32(LPC43_CCU1_M4_UART1_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU1_M4_UART1_CFG);
+
+  /* Clock peripheral */
+
+  regval  = getreg32(LPC43_CCU2_APB0_UART1_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU2_APB0_UART1_CFG);
 
   /* Configure I/O pins.  NOTE that multiple pin configuration options must
    * be disambiguated by defining the pin configuration in the board.h
@@ -407,6 +434,19 @@ void lpc43_usart2_setup(void)
   regval |= (BOARD_USART2_CLKSRC | BASE_USART2_CLK_AUTOBLOCK);
   putreg32(regval, LPC43_BASE_USART2_CLK);
 
+  /* Clock register */
+
+  regval  = getreg32(LPC43_CCU1_M4_USART2_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU1_M4_USART2_CFG);
+
+  /* Clock peripheral */
+
+  regval  = getreg32(LPC43_CCU2_APB2_USART2_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU2_APB2_USART2_CFG);
+
+
   /* Configure I/O pins.  NOTE that multiple pin configuration options must
    * be disambiguated by defining the pin configuration in the board.h
    * header file.
@@ -443,6 +483,18 @@ void lpc43_usart3_setup(void)
   regval &= ~BASE_USART3_CLK_CLKSEL_MASK;
   regval |= (BOARD_USART3_CLKSRC | BASE_USART3_CLK_AUTOBLOCK);
   putreg32(regval, LPC43_BASE_USART3_CLK);
+
+  /* Clock register */
+
+  regval  = getreg32(LPC43_CCU1_M4_USART3_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU1_M4_USART3_CFG);
+
+  /* Clock peripheral */
+
+  regval  = getreg32(LPC43_CCU2_APB2_USART3_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU2_APB2_USART3_CFG);
 
   /* Configure I/O pins.  NOTE that multiple pin configuration options must
    * be disambiguated by defining the pin configuration in the board.h
@@ -490,18 +542,18 @@ void lpc43_setbaud(uintptr_t uartbase, uint32_t basefreq, uint32_t baud)
   uint32_t cdivadd;  /* Candidate FDR DIVADDVAL value */
   uint32_t errval;   /* Error value associated with the candidate */
 
- /* The U[S]ART buad is given by:
-  *
-  * Fbaud =  Fbase * mul / (mul + divadd) / (16 * dl)
-  * dl    =  Fbase * mul / (mul + divadd) / Fbaud / 16
-  *       =  Fbase * mul / ((mul + divadd) * Fbaud * 16)
-  *       = ((Fbase * mul) >> 4) / ((mul + divadd) * Fbaud)
-  *
-  * Where the  value of MULVAL and DIVADDVAL comply with:
-  *
-  *  0 < mul < 16
-  *  0 <= divadd < mul
-  */
+  /* The U[S]ART buad is given by:
+   *
+   * Fbaud =  Fbase * mul / (mul + divadd) / (16 * dl)
+   * dl    =  Fbase * mul / (mul + divadd) / Fbaud / 16
+   *       =  Fbase * mul / ((mul + divadd) * Fbaud * 16)
+   *       = ((Fbase * mul) >> 4) / ((mul + divadd) * Fbaud)
+   *
+   * Where the  value of MULVAL and DIVADDVAL comply with:
+   *
+   *  0 < mul < 16
+   *  0 <= divadd < mul
+   */
 
   best   = UINT32_MAX;
   divadd = 0;
@@ -519,7 +571,7 @@ void lpc43_setbaud(uintptr_t uartbase, uint32_t basefreq, uint32_t baud)
           /* Candidate:
            *   dl         = ((Fbase * mul) >> 4) / ((mul + cdivadd) * Fbaud)
            *   (dl << 32) = (Fbase << 28) * cmul / ((mul + cdivadd) * Fbaud)
-          */
+           */
 
           uint64_t dl64 = ((uint64_t)basefreq << 28) * cmul /
                           ((cmul + cdivadd) * baud);
