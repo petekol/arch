@@ -56,6 +56,7 @@
 #include "chip.h"
 #include "lpc43_pinconfig.h"
 #include "lpc43_spi.h"
+#include "lpc43_ssp.h"
 
 #ifdef CONFIG_LPC43_SPI
 
@@ -579,6 +580,30 @@ FAR struct spi_dev_s *lpc43_spiinitialize(int port)
   sem_init(&priv->exclsem, 0, 1);
 #endif
   return &priv->spidev;
+}
+
+/****************************************************************************
+ * Name: up_spiinitialize
+ *
+ * Description:
+ *   Initialize the selected SPI port
+ *
+ * Input Parameter:
+ *   Port number (for hardware that has multiple SPI interfaces)
+ *
+ * Returned Value:
+ *   Valid SPI device structure reference on success; a NULL on failure
+ *
+ ****************************************************************************/
+
+FAR struct spi_dev_s *up_spiinitialize(int port)
+{
+
+#if defined(CONFIG_LPC43_SSP0) || defined(CONFIG_LPC43_SSP1)
+  return port? lpc43_spiinitialize(port) :lpc43_sspinitialize(port-1);
+#else
+  return lpc43_spiinitialize(port);
+#endif
 }
 
 #endif /* CONFIG_LPC43_SPI */
