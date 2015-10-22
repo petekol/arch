@@ -696,7 +696,6 @@ static inline FAR struct lpc43_sspdev_s *lpc43_ssp0initialize(void)
   /* Pin configuration */
 
   lpc43_pin_config(PINCONF_SSP0_SCK);
-  lpc43_pin_config(PINCONF_SSP0_SSEL);
   lpc43_pin_config(PINCONF_SSP0_MISO);
   lpc43_pin_config(PINCONF_SSP0_MOSI);
 
@@ -750,7 +749,6 @@ static inline FAR struct lpc43_sspdev_s *lpc43_ssp1initialize(void)
   /* Pins configuration */
 
   lpc43_pin_config(PINCONF_SSP1_SCK);
-  lpc43_pin_config(PINCONF_SSP1_SSEL);
   lpc43_pin_config(PINCONF_SSP1_MISO);
   lpc43_pin_config(PINCONF_SSP1_MOSI);
 

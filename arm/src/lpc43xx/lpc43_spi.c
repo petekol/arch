@@ -582,11 +582,16 @@ FAR struct spi_dev_s *lpc43_spiinitialize(int port)
   return &priv->spidev;
 }
 
+#endif /* CONFIG_LPC43_SPI */
+
 /****************************************************************************
  * Name: up_spiinitialize
  *
  * Description:
  *   Initialize the selected SPI port
+ *   0 - SPI
+ *   1 - SSP0
+ *   2 - SSP1
  *
  * Input Parameter:
  *   Port number (for hardware that has multiple SPI interfaces)
@@ -598,13 +603,20 @@ FAR struct spi_dev_s *lpc43_spiinitialize(int port)
 
 FAR struct spi_dev_s *up_spiinitialize(int port)
 {
-
-#if defined(CONFIG_LPC43_SSP0) || defined(CONFIG_LPC43_SSP1)
-  return port? lpc43_spiinitialize(port) :lpc43_sspinitialize(port-1);
+  if (port) {
+#if ( defined(CONFIG_LPC43_SSP0) || defined(CONFIG_LPC43_SSP1) )
+    return lpc43_sspinitialize(port-1);
 #else
-  return lpc43_spiinitialize(port);
+    return NULL;
 #endif
+  } else {
+#if defined(CONFIG_LPC43_SPI)
+    return lpc43_spiinitialize(port);
+#else
+    return NULL;
+#endif
+  }
 }
 
-#endif /* CONFIG_LPC43_SPI */
+
 
