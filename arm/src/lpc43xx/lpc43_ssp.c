@@ -131,9 +131,12 @@ static uint32_t ssp_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency);
 static void     ssp_setmode(FAR struct spi_dev_s *dev, enum spi_mode_e mode);
 static void     ssp_setbits(FAR struct spi_dev_s *dev, int nbits);
 static uint16_t ssp_send(FAR struct spi_dev_s *dev, uint16_t ch);
+static void     ssp_exchange(FAR struct spi_dev_s *dev, FAR const void *txbuffer,
+                         FAR void *rxbuffer, size_t nwords);
+#ifndef CONFIG_SPI_EXCHANGE
 static void     ssp_sndblock(FAR struct spi_dev_s *dev, FAR const void *buffer, size_t nwords);
 static void     ssp_recvblock(FAR struct spi_dev_s *dev, FAR void *buffer, size_t nwords);
-
+#endif
 /* Initialization */
 
 #ifdef CONFIG_LPC43_SSP0
@@ -622,7 +625,7 @@ static void ssp_exchange(FAR struct spi_dev_s *dev, FAR const void *txbuffer,
  *   None
  *
  ****************************************************************************/
-
+#ifndef CONFIG_SPI_EXCHANGE
 static void ssp_sndblock(FAR struct spi_dev_s *dev, FAR const void *buffer, size_t nwords)
 {
   return ssp_exchange(dev, buffer, NULL, nwords);
@@ -652,6 +655,9 @@ static void ssp_recvblock(FAR struct spi_dev_s *dev, FAR void *buffer, size_t nw
   return ssp_exchange(dev, NULL, buffer, nwords);
 }
 
+#endif
+
+#ifdef CONFIG_LPC43_SSP0
 /****************************************************************************
  * Name: lpc43_ssp0initialize
  *
@@ -666,7 +672,6 @@ static void ssp_recvblock(FAR struct spi_dev_s *dev, FAR void *buffer, size_t nw
  *
  ****************************************************************************/
 
-#ifdef CONFIG_LPC43_SSP0
 static inline FAR struct lpc43_sspdev_s *lpc43_ssp0initialize(void)
 {
   irqstate_t flags;
